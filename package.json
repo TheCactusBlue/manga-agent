@@ -6,11 +6,12 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx src/index.tsx",
+    "typecheck": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "packageManager": "pnpm@10.12.1",
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",

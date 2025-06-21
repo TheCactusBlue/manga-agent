@@ -33,24 +33,22 @@ async function ensureWorkspaceDirectory(): Promise<string> {
   return workspaceDir;
 }
 
-async function generateDetailedImageDescription(panel: ComicPanel, story: { artStyle: string }): Promise<string> {
+async function generateDetailedImageDescription(panelData: any): Promise<string> {
   const result = await generateText({
     model: anthropic("claude-3-5-sonnet-20241022"),
-    system: `You are an expert manga artist and illustrator. Create extremely detailed visual descriptions for comic panels that could be used as prompts for AI image generation. Focus on:
+    system: `You are an expert manga artist and illustrator. Create extremely detailed visual descriptions for panels that could be used as prompts for AI image generation. Focus on:
 - Specific visual details, composition, and framing
 - Character positioning and expressions
 - Environmental details and atmosphere
 - Art style elements and rendering techniques
 - Color palette suggestions
-- Lighting and shadows`,
-    prompt: `Create a detailed visual description for this comic panel:
+- Lighting and shadows
 
-Panel Description: ${panel.description}
-Characters: ${panel.characters.join(", ")}
-Setting: ${panel.setting}
-Visual Style: ${panel.visualStyle}
-Art Style: ${story.artStyle}
-Original Image Prompt: ${panel.imagePrompt}
+When dialogue is present, encourage the use of text bubbles for the character in the prompt.
+`,
+    prompt: `Create a detailed visual description for this comic panel based on the JSON data:
+
+${JSON.stringify(panelData, null, 2)}
 
 Provide a comprehensive visual description that an artist could use to create this panel, including specific details about composition, character poses, expressions, background elements, and artistic techniques.`
   });
@@ -155,8 +153,6 @@ Focus on creating:
 }
 
 async function createPanelFile(panel: ComicPanel, story: { artStyle: string }, panelDir: string): Promise<string> {
-  const detailedDescription = await generateDetailedImageDescription(panel, story);
-  
   const panelData = {
     id: panel.id,
     description: panel.description,
@@ -165,9 +161,12 @@ async function createPanelFile(panel: ComicPanel, story: { artStyle: string }, p
     dialogue: panel.dialogue,
     visualStyle: panel.visualStyle,
     imagePrompt: panel.imagePrompt,
-    detailedVisualDescription: detailedDescription,
-    artStyle: story.artStyle
+    artStyle: story.artStyle,
+    detailedVisualDescription: undefined as string | undefined
   };
+  
+  const detailedDescription = await generateDetailedImageDescription(panelData);
+  panelData.detailedVisualDescription = detailedDescription;
   
   const filePath = path.join(panelDir, `panel-${panel.id}.json`);
   fs.writeFileSync(filePath, JSON.stringify(panelData, null, 2));
@@ -206,7 +205,17 @@ export async function generateComic(request: ComicGenerationRequest): Promise<Co
       await createPanelFile(panel, story, comicDir);
       
       // Generate detailed prompt for image generation
-      const detailedDescription = await generateDetailedImageDescription(panel, story);
+      const panelData = {
+        id: panel.id,
+        description: panel.description,
+        characters: panel.characters,
+        setting: panel.setting,
+        dialogue: panel.dialogue,
+        visualStyle: panel.visualStyle,
+        imagePrompt: panel.imagePrompt,
+        artStyle: story.artStyle
+      };
+      const detailedDescription = await generateDetailedImageDescription(panelData);
       
       // Generate and download the image
       const imagePath = await generateImageWithFlux(detailedDescription, panel.id.toString(), imagesDir);

@@ -10,7 +10,8 @@ export const ComicPanelSchema = z.object({
     text: z.string()
   })).optional().describe("Dialogue spoken by characters in this panel"),
   visualStyle: z.string().describe("Visual style and mood for the panel (e.g., 'dramatic close-up', 'wide establishing shot')"),
-  imagePrompt: z.string().describe("Detailed prompt for image generation optimized for Flux")
+  imagePrompt: z.string().describe("Detailed prompt for image generation optimized for Flux"),
+  detailedVisualDescription: z.string().optional().describe("AI-generated detailed visual description for consistent image generation")
 });
 
 export const ComicStorySchema = z.object({
