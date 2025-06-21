@@ -1,23 +1,19 @@
 import React, { useState, useEffect } from "react";
-
 import { render, Text, Box } from "ink";
 import TextInput from "ink-text-input";
-import Replicate from "replicate";
 import "dotenv/config";
-
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN,
-});
+import { generateComic } from "./comic-generator.js";
+import type { ComicGenerationRequest, ComicGenerationResult } from "./schema.js";
 
 interface AppState {
-  step: "prompt" | "image" | "processing" | "done";
+  step: "prompt" | "options" | "processing" | "done";
   prompt: string;
-  imageUrl?: string;
   currentInput: string;
-  output?: string;
+  panelCount: number;
+  artStyle?: string;
+  genre?: string;
+  result?: ComicGenerationResult;
   error?: string;
-  generationCount: number;
-  previousOutput?: string;
 }
 
 interface PromptInputProps {
@@ -29,11 +25,12 @@ interface PromptInputProps {
 function PromptInput({ currentInput, onInputChange, onSubmit }: PromptInputProps) {
   return (
     <Box flexDirection="column">
-      <Text>Enter your prompt:</Text>
+      <Text color="cyan">🎨 Comic Generator</Text>
+      <Text>Enter your comic prompt:</Text>
       <Box borderStyle="single" paddingX={1}>
         <TextInput
           value={currentInput}
-          placeholder="e.g., Show the character working on a laptop..."
+          placeholder="e.g., A superhero saves a cat from a tree..."
           onChange={onInputChange}
           onSubmit={onSubmit}
         />
@@ -42,61 +39,71 @@ function PromptInput({ currentInput, onInputChange, onSubmit }: PromptInputProps
   );
 }
 
-interface ImageUrlInputProps {
+interface OptionsInputProps {
   currentInput: string;
   onInputChange: (value: string) => void;
   onSubmit: (value: string) => void;
+  prompt: string;
 }
 
-function ImageUrlInput({ currentInput, onInputChange, onSubmit }: ImageUrlInputProps) {
+function OptionsInput({ currentInput, onInputChange, onSubmit, prompt }: OptionsInputProps) {
   return (
     <Box flexDirection="column">
-      <Text>Enter image URL:</Text>
+      <Text color="green">Prompt: {prompt}</Text>
+      <Text>Panel count (1-12, default 4):</Text>
       <Box borderStyle="single" paddingX={1}>
         <TextInput
           value={currentInput}
-          placeholder="https://example.com/image.jpg"
+          placeholder="4"
           onChange={onInputChange}
           onSubmit={onSubmit}
         />
       </Box>
+      <Text dimColor>Press Enter to continue with default options</Text>
     </Box>
   );
 }
 
 interface ProcessingViewProps {
   prompt: string;
-  imageUrl?: string;
+  panelCount: number;
 }
 
-function ProcessingView({ prompt, imageUrl }: ProcessingViewProps) {
+function ProcessingView({ prompt, panelCount }: ProcessingViewProps) {
   return (
     <Box flexDirection="column">
-      <Text>Processing your request...</Text>
+      <Text color="yellow">🔄 Generating your comic story and detailed panel descriptions...</Text>
       <Text dimColor>Prompt: {prompt}</Text>
-      <Text dimColor>Image: {imageUrl}</Text>
+      <Text dimColor>Panels: {panelCount}</Text>
+      <Text dimColor>Creating structured story and detailed visual descriptions...</Text>
     </Box>
   );
 }
 
 interface DoneViewProps {
   error?: string;
-  output?: string;
+  result?: ComicGenerationResult;
   currentInput: string;
   onInputChange: (value: string) => void;
   onSubmit: (value: string) => void;
 }
 
-function DoneView({ error, output, currentInput, onInputChange, onSubmit }: DoneViewProps) {
+function DoneView({ error, result, currentInput, onInputChange, onSubmit }: DoneViewProps) {
   return (
     <Box flexDirection="column">
       {error ? (
-        <Text color="red">Error: {error}</Text>
-      ) : (
+        <Text color="red">❌ Error: {error}</Text>
+      ) : result ? (
         <>
-          <Text color="green">✅ Image generated successfully!</Text>
-          <Text>Output URL: {output}</Text>
-          <Text dimColor>Press Enter to generate another image...</Text>
+          <Text color="green">✅ Comic story and detailed descriptions generated!</Text>
+          <Text color="cyan">Title: {result.story.title}</Text>
+          <Text>Genre: {result.story.genre}</Text>
+          <Text>Characters: {result.story.characters.map(c => c.name).join(", ")}</Text>
+          <Text>Panels: {result.metadata.totalPanels}</Text>
+          <Text>Processing time: {(result.metadata.processingTimeMs / 1000).toFixed(1)}s</Text>
+          <Text dimColor>Story and panel descriptions saved to: .workspace/comics/</Text>
+          
+          <Text>Press Enter to generate another comic...</Text>
           <Box borderStyle="single" paddingX={1}>
             <TextInput
               value={currentInput}
@@ -106,7 +113,7 @@ function DoneView({ error, output, currentInput, onInputChange, onSubmit }: Done
             />
           </Box>
         </>
-      )}
+      ) : null}
     </Box>
   );
 }
@@ -115,54 +122,49 @@ function App() {
   const [state, setState] = useState<AppState>({
     step: "prompt",
     prompt: "",
-    imageUrl: undefined,
     currentInput: "",
-    generationCount: 0,
-    previousOutput: undefined,
+    panelCount: 4,
   });
 
   const handlePromptSubmit = (value: string) => {
-    setState((prev) => ({
+    setState(prev => ({
       ...prev,
       prompt: value,
-      step: prev.generationCount === 0 ? "processing" : "image",
+      step: "options",
       currentInput: "",
-      generationCount: prev.generationCount + 1,
-      imageUrl: prev.generationCount > 0 ? prev.previousOutput : undefined,
     }));
   };
 
-  const handleImageSubmit = (value: string) => {
-    setState((prev) => ({ ...prev, imageUrl: value, step: "processing" }));
+  const handleOptionsSubmit = (value: string) => {
+    const panelCount = value.trim() ? parseInt(value.trim()) : 4;
+    setState(prev => ({
+      ...prev,
+      panelCount: Math.max(1, Math.min(12, panelCount)),
+      step: "processing",
+      currentInput: "",
+    }));
   };
 
   useEffect(() => {
     if (state.step === "processing") {
-      const processImage = async () => {
+      const processComic = async () => {
         try {
-          const input = {
+          const request: ComicGenerationRequest = {
             prompt: state.prompt,
-            input_image: state.imageUrl,
-            aspect_ratio: "match_input_image",
-            output_format: "jpg",
-            safety_tolerance: 6,
+            panelCount: state.panelCount,
+            artStyle: state.artStyle,
+            genre: state.genre,
           };
 
-          const output = (await replicate.run(
-            "black-forest-labs/flux-kontext-max",
-            {
-              input,
-            },
-          )) as any;
-
-          setState((prev) => ({
+          const result = await generateComic(request);
+          
+          setState(prev => ({
             ...prev,
             step: "done",
-            output: output.url().href,
-            previousOutput: output.url().href,
+            result,
           }));
         } catch (error) {
-          setState((prev) => ({
+          setState(prev => ({
             ...prev,
             step: "done",
             error: error instanceof Error ? error.message : "Unknown error",
@@ -170,23 +172,21 @@ function App() {
         }
       };
 
-      processImage();
+      processComic();
     }
-  }, [state.step, state.prompt, state.imageUrl]);
+  }, [state.step, state.prompt, state.panelCount, state.artStyle, state.genre]);
 
   const handleInputChange = (value: string) => {
-    setState((prev) => ({ ...prev, currentInput: value }));
+    setState(prev => ({ ...prev, currentInput: value }));
   };
 
   const handleDoneSubmit = (value: string) => {
-    setState((prev) => ({
-      ...prev,
-      prompt: value,
-      step: "processing",
-      currentInput: "",
-      generationCount: prev.generationCount + 1,
-      imageUrl: prev.previousOutput,
-    }));
+    setState({
+      step: "prompt",
+      prompt: "",
+      currentInput: value,
+      panelCount: 4,
+    });
   };
 
   if (state.step === "prompt") {
@@ -199,12 +199,13 @@ function App() {
     );
   }
 
-  if (state.step === "image") {
+  if (state.step === "options") {
     return (
-      <ImageUrlInput
+      <OptionsInput
         currentInput={state.currentInput}
         onInputChange={handleInputChange}
-        onSubmit={handleImageSubmit}
+        onSubmit={handleOptionsSubmit}
+        prompt={state.prompt}
       />
     );
   }
@@ -213,7 +214,7 @@ function App() {
     return (
       <ProcessingView
         prompt={state.prompt}
-        imageUrl={state.imageUrl}
+        panelCount={state.panelCount}
       />
     );
   }
@@ -222,7 +223,7 @@ function App() {
     return (
       <DoneView
         error={state.error}
-        output={state.output}
+        result={state.result}
         currentInput={state.currentInput}
         onInputChange={handleInputChange}
         onSubmit={handleDoneSubmit}

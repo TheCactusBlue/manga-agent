@@ -13,7 +13,9 @@
   "license": "ISC",
   "packageManager": "pnpm@10.12.1",
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.12",
     "@ai-sdk/replicate": "^0.2.8",
+    "@anthropic-ai/sdk": "^0.54.0",
     "ai": "^4.3.16",
     "dotenv": "^16.5.0",
     "ink": "^6.0.0",
