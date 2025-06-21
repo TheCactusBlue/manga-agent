@@ -1,0 +1,29 @@
+{
+  "name": "bfl-hackathon",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx src/index.tsx",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.12.1",
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "ink": "^6.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.1.0",
+    "replicate": "^1.0.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.0.4",
+    "@types/node": "^24.0.3",
+    "@types/react": "^19.1.8",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}
