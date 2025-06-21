@@ -1,7 +1,8 @@
+import "dotenv/config";
+
 import React, { useState, useEffect } from "react";
 import { render, Text, Box } from "ink";
 import TextInput from "ink-text-input";
-import "dotenv/config";
 import { generateComic } from "./comic-generator.js";
 import type { ComicGenerationRequest, ComicGenerationResult } from "./schema.js";
 

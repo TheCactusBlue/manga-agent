@@ -1,13 +1,19 @@
 import { generateObject, generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import Replicate from "replicate";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as https from "node:https";
 import { 
   ComicGenerationRequest, 
   ComicGenerationResult, 
   ComicStorySchema, 
   ComicPanel 
 } from "./schema.js";
+
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN,
+});
 
 async function ensureWorkspaceDirectory(): Promise<string> {
   const workspaceDir = path.join(process.cwd(), ".workspace");
@@ -30,7 +36,7 @@ async function ensureWorkspaceDirectory(): Promise<string> {
 async function generateDetailedImageDescription(panel: ComicPanel, story: { artStyle: string }): Promise<string> {
   const result = await generateText({
     model: anthropic("claude-3-5-sonnet-20241022"),
-    system: `You are an expert comic book artist and illustrator. Create extremely detailed visual descriptions for comic panels that could be used as prompts for AI image generation. Focus on:
+    system: `You are an expert manga artist and illustrator. Create extremely detailed visual descriptions for comic panels that could be used as prompts for AI image generation. Focus on:
 - Specific visual details, composition, and framing
 - Character positioning and expressions
 - Environmental details and atmosphere
@@ -50,6 +56,70 @@ Provide a comprehensive visual description that an artist could use to create th
   });
   
   return result.text;
+}
+
+async function downloadImage(url: string, filepath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(filepath);
+    
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download image: ${response.statusCode}`));
+        return;
+      }
+      
+      response.pipe(file);
+      
+      file.on('finish', () => {
+        file.close();
+        resolve();
+      });
+      
+      file.on('error', (err) => {
+        fs.unlink(filepath, () => {}); // Delete the file on error
+        reject(err);
+      });
+    }).on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+async function generateImageWithFlux(prompt: string, panelId: string, imagesDir: string): Promise<string> {
+  try {
+    console.log(`   🎨 Generating image with Flux for panel ${panelId}...`);
+    
+    const output = (await replicate.run(
+      "black-forest-labs/flux-kontext-max",
+      {
+        input: {
+          prompt: prompt,
+          aspect_ratio: "16:9",
+          output_format: "jpg",
+          output_quality: 90,
+          safety_tolerance: 2
+        }
+      }
+    ) as any).url().href;
+    
+    if (!output || typeof output !== 'string') {
+      throw new Error('Invalid output from Replicate API');
+    }
+    
+    const imageUrl = output as string;
+    const filename = `panel-${panelId}.jpg`;
+    const filepath = path.join(imagesDir, filename);
+    
+    console.log(`   📥 Downloading image for panel ${panelId}...`);
+    await downloadImage(imageUrl, filepath);
+    
+    console.log(`   ✅ Image saved: ${filename}`);
+    return filepath;
+    
+  } catch (error) {
+    console.error(`   ❌ Failed to generate image for panel ${panelId}:`, error);
+    throw error;
+  }
 }
 
 async function generateComicStory(request: ComicGenerationRequest) {
@@ -124,23 +194,30 @@ export async function generateComic(request: ComicGenerationRequest): Promise<Co
     JSON.stringify(story, null, 2)
   );
   
-  console.log("🖼️  Generating detailed panel descriptions...");
+  console.log("🖼️  Generating images for panels...");
   const generatedImages = [];
+  const imagesDir = path.join(workspaceDir, "images");
   
   for (let i = 0; i < story.panels.length; i++) {
     const panel = story.panels[i];
     console.log(`   Panel ${i + 1}/${story.panels.length}: ${panel.description}`);
     
     try {
-      const panelFilePath = await createPanelFile(panel, story, comicDir);
+      await createPanelFile(panel, story, comicDir);
+      
+      // Generate detailed prompt for image generation
+      const detailedDescription = await generateDetailedImageDescription(panel, story);
+      
+      // Generate and download the image
+      const imagePath = await generateImageWithFlux(detailedDescription, panel.id.toString(), imagesDir);
       
       generatedImages.push({
         panelId: panel.id,
-        imageUrl: `Detailed visual description generated for panel ${panel.id}`,
-        imagePath: path.relative(process.cwd(), panelFilePath)
+        imageUrl: `file://${imagePath}`,
+        imagePath: path.relative(process.cwd(), imagePath)
       });
       
-      console.log(`   ✅ Panel ${panel.id} description generated and saved`);
+      console.log(`   ✅ Panel ${panel.id} image generated and saved`);
     } catch (error) {
       console.error(`   ❌ Failed to generate panel ${panel.id}:`, error);
       throw error;
