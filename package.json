@@ -17,7 +17,8 @@
     "ink": "^6.0.0",
     "ink-text-input": "^6.0.0",
     "react": "^19.1.0",
-    "replicate": "^1.0.1"
+    "replicate": "^1.0.1",
+    "zod": "^3.25.67"
   },
   "devDependencies": {
     "@biomejs/biome": "2.0.4",

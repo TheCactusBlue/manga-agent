@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+
 import { render, Text, Box } from "ink";
 import TextInput from "ink-text-input";
 import Replicate from "replicate";
@@ -17,6 +18,97 @@ interface AppState {
   error?: string;
   generationCount: number;
   previousOutput?: string;
+}
+
+interface PromptInputProps {
+  currentInput: string;
+  onInputChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+}
+
+function PromptInput({ currentInput, onInputChange, onSubmit }: PromptInputProps) {
+  return (
+    <Box flexDirection="column">
+      <Text>Enter your prompt:</Text>
+      <Box borderStyle="single" paddingX={1}>
+        <TextInput
+          value={currentInput}
+          placeholder="e.g., Show the character working on a laptop..."
+          onChange={onInputChange}
+          onSubmit={onSubmit}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+interface ImageUrlInputProps {
+  currentInput: string;
+  onInputChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+}
+
+function ImageUrlInput({ currentInput, onInputChange, onSubmit }: ImageUrlInputProps) {
+  return (
+    <Box flexDirection="column">
+      <Text>Enter image URL:</Text>
+      <Box borderStyle="single" paddingX={1}>
+        <TextInput
+          value={currentInput}
+          placeholder="https://example.com/image.jpg"
+          onChange={onInputChange}
+          onSubmit={onSubmit}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+interface ProcessingViewProps {
+  prompt: string;
+  imageUrl?: string;
+}
+
+function ProcessingView({ prompt, imageUrl }: ProcessingViewProps) {
+  return (
+    <Box flexDirection="column">
+      <Text>Processing your request...</Text>
+      <Text dimColor>Prompt: {prompt}</Text>
+      <Text dimColor>Image: {imageUrl}</Text>
+    </Box>
+  );
+}
+
+interface DoneViewProps {
+  error?: string;
+  output?: string;
+  currentInput: string;
+  onInputChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+}
+
+function DoneView({ error, output, currentInput, onInputChange, onSubmit }: DoneViewProps) {
+  return (
+    <Box flexDirection="column">
+      {error ? (
+        <Text color="red">Error: {error}</Text>
+      ) : (
+        <>
+          <Text color="green">✅ Image generated successfully!</Text>
+          <Text>Output URL: {output}</Text>
+          <Text dimColor>Press Enter to generate another image...</Text>
+          <Box borderStyle="single" paddingX={1}>
+            <TextInput
+              value={currentInput}
+              placeholder="Enter new prompt..."
+              onChange={onInputChange}
+              onSubmit={onSubmit}
+            />
+          </Box>
+        </>
+      )}
+    </Box>
+  );
 }
 
 function App() {
@@ -57,7 +149,7 @@ function App() {
           };
 
           const output = (await replicate.run(
-            "black-forest-labs/flux-kontext-pro",
+            "black-forest-labs/flux-kontext-max",
             {
               input,
             },
@@ -82,78 +174,59 @@ function App() {
     }
   }, [state.step, state.prompt, state.imageUrl]);
 
+  const handleInputChange = (value: string) => {
+    setState((prev) => ({ ...prev, currentInput: value }));
+  };
+
+  const handleDoneSubmit = (value: string) => {
+    setState((prev) => ({
+      ...prev,
+      prompt: value,
+      step: "processing",
+      currentInput: "",
+      generationCount: prev.generationCount + 1,
+      imageUrl: prev.previousOutput,
+    }));
+  };
+
   if (state.step === "prompt") {
     return (
-      <Box flexDirection="column">
-        <Text>Enter your prompt:</Text>
-        <TextInput
-          value={state.currentInput}
-          placeholder="e.g., Show the character working on a laptop..."
-          onChange={(value) =>
-            setState((prev) => ({ ...prev, currentInput: value }))
-          }
-          onSubmit={handlePromptSubmit}
-        />
-      </Box>
+      <PromptInput
+        currentInput={state.currentInput}
+        onInputChange={handleInputChange}
+        onSubmit={handlePromptSubmit}
+      />
     );
   }
 
   if (state.step === "image") {
     return (
-      <Box flexDirection="column">
-        <Text>Enter image URL:</Text>
-        <TextInput
-          value={state.currentInput}
-          placeholder="https://example.com/image.jpg"
-          onChange={(value) =>
-            setState((prev) => ({ ...prev, currentInput: value }))
-          }
-          onSubmit={handleImageSubmit}
-        />
-      </Box>
+      <ImageUrlInput
+        currentInput={state.currentInput}
+        onInputChange={handleInputChange}
+        onSubmit={handleImageSubmit}
+      />
     );
   }
 
   if (state.step === "processing") {
     return (
-      <Box flexDirection="column">
-        <Text>Processing your request...</Text>
-        <Text dimColor>Prompt: {state.prompt}</Text>
-        <Text dimColor>Image: {state.imageUrl}</Text>
-      </Box>
+      <ProcessingView
+        prompt={state.prompt}
+        imageUrl={state.imageUrl}
+      />
     );
   }
 
   if (state.step === "done") {
     return (
-      <Box flexDirection="column">
-        {state.error ? (
-          <Text color="red">Error: {state.error}</Text>
-        ) : (
-          <>
-            <Text color="green">✅ Image generated successfully!</Text>
-            <Text>Output URL: {state.output}</Text>
-            <Text dimColor>Press Enter to generate another image...</Text>
-            <TextInput
-              value={state.currentInput}
-              placeholder="Enter new prompt..."
-              onChange={(value) =>
-                setState((prev) => ({ ...prev, currentInput: value }))
-              }
-              onSubmit={(value) => {
-                setState((prev) => ({
-                  ...prev,
-                  prompt: value,
-                  step: "processing",
-                  currentInput: "",
-                  generationCount: prev.generationCount + 1,
-                  imageUrl: prev.previousOutput,
-                }));
-              }}
-            />
-          </>
-        )}
-      </Box>
+      <DoneView
+        error={state.error}
+        output={state.output}
+        currentInput={state.currentInput}
+        onInputChange={handleInputChange}
+        onSubmit={handleDoneSubmit}
+      />
     );
   }
 
